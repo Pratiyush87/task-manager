@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: task-manager-mysql:v1.0
+    container_name: task-mysql
+    environment:
+      MYSQL_DATABASE: taskdb
+      MYSQL_USER: taskuser
+      MYSQL_PASSWORD: taskpass123
+      MYSQL_ROOT_PASSWORD: rootpass123
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    networks:
+      - task-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-prootpass123"]
+      timeout: 20s
+      retries: 10
+
+  nginx:
+    image: task-manager-nginx:v1.0
+    container_name: task-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - nodejs
+      - fastapi
+      - springboot
+      - dotnet
+    networks:
+      - task-network
+
+  nodejs:
+    image: task-manager-nodejs:v1.0
+    container_name: task-nodejs
+    ports:
+      - "8001:3001"
+    environment:
+      - DB_HOST=mysql
+      - DB_USER=taskuser
+      - DB_PASSWORD=taskpass123
+      - DB_NAME=taskdb
+      - PORT=3001
+      - BACKEND_NAME=Node.js
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - task-network
+
+  fastapi:
+    image: task-manager-fastapi:v1.0
+    container_name: task-fastapi
+    ports:
+      - "8002:8000"
+    environment:
+      - DATABASE_URL=mysql+pymysql://taskuser:taskpass123@mysql:3306/taskdb
+      - BACKEND_NAME=FastAPI
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - task-network
+
+  springboot:
+    image: task-manager-springboot:v1.0
+    container_name: task-springboot
+    ports:
+      - "8003:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/taskdb?useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=taskuser
+      - SPRING_DATASOURCE_PASSWORD=taskpass123
+      - SERVER_PORT=8080
+      - BACKEND_NAME=SpringBoot
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - task-network
+
+  dotnet:
+    image: task-manager-dotnet:v1.0
+    container_name: task-dotnet
+    ports:
+      - "8004:5000"
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Database=taskdb;User=taskuser;Password=taskpass123;
+      - ASPNETCORE_URLS=http://+:5000
+      - BACKEND_NAME=.NET
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - task-network
+
+networks:
+  task-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
