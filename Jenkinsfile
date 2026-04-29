@@ -2,8 +2,8 @@ pipeline {
     agent any
     
     environment {
-        ECR_REGISTRY = '988698481528.dkr.ecr.us-east-1.amazonaws.com'
-        AWS_REGION = 'us-east-1'
+        ECR_REGISTRY = '988698481528.dkr.ecr.ap-south-1.amazonaws.com'
+        AWS_REGION = 'ap-south-1'
     }
     
     stages {
@@ -67,7 +67,7 @@ pipeline {
             steps {
                 sh """
                     ssh -o StrictHostKeyChecking=no ubuntu@10.0.2.242 << 'EOF'
-                        aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                        aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${ECR_REGISTRY}
                         
                         docker pull ${ECR_REGISTRY}/task-manager-nodejs:latest
                         docker pull ${ECR_REGISTRY}/task-manager-fastapi:latest
