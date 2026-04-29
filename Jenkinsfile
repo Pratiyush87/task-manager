@@ -82,9 +82,14 @@ pipeline {
                         docker run -d --name task-fastapi -p 8000:8000 ${ECR_REGISTRY}/task-manager-fastapi:latest
                         docker run -d --name task-springboot -p 8080:8080 ${ECR_REGISTRY}/task-manager-springboot:latest
                         docker run -d --name task-dotnet -p 5000:5000 ${ECR_REGISTRY}/task-manager-dotnet:latest
+                        
                         sleep 5
+                        
                         docker run -d --name task-nginx -p 80:80 ${ECR_REGISTRY}/task-manager-nginx:latest
-                    EOF
+                        
+                        echo "Deployment completed successfully!"
+                        docker ps
+EOF
                 """
             }
         }
