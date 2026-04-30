@@ -4,6 +4,10 @@ pipeline {
     environment {
         ECR_REGISTRY = '988698481528.dkr.ecr.ap-south-1.amazonaws.com'
         AWS_REGION = 'ap-south-1'
+        RDS_HOST = credentials('rds-host')
+        RDS_USER = credentials('rds-username')
+        RDS_PASSWORD = credentials('rds-password')
+        DB_NAME = 'taskdb'
     }
     
     stages {
@@ -68,28 +72,21 @@ pipeline {
                 sh """
                     ssh -o StrictHostKeyChecking=no ubuntu@10.0.2.242 << 'EOF'
                         aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${ECR_REGISTRY}
-                        
                         docker pull ${ECR_REGISTRY}/task-manager-nodejs:latest
                         docker pull ${ECR_REGISTRY}/task-manager-fastapi:latest
                         docker pull ${ECR_REGISTRY}/task-manager-springboot:latest
                         docker pull ${ECR_REGISTRY}/task-manager-dotnet:latest
                         docker pull ${ECR_REGISTRY}/task-manager-nginx:latest
-                        
-                        docker stop \$(docker ps -aq) 2>/dev/null || true
-                        docker rm \$(docker ps -aq) 2>/dev/null || true
-                        
+                        docker stop task-nodejs task-fastapi task-springboot task-dotnet task-nginx 2>/dev/null || true
+                        docker rm task-nodejs task-fastapi task-springboot task-dotnet task-nginx 2>/dev/null || true
                         docker run -d --name task-nodejs -p 3001:3001 ${ECR_REGISTRY}/task-manager-nodejs:latest
                         docker run -d --name task-fastapi -p 8000:8000 ${ECR_REGISTRY}/task-manager-fastapi:latest
                         docker run -d --name task-springboot -p 8080:8080 ${ECR_REGISTRY}/task-manager-springboot:latest
                         docker run -d --name task-dotnet -p 5000:5000 ${ECR_REGISTRY}/task-manager-dotnet:latest
-                        
                         sleep 5
-                        
                         docker run -d --name task-nginx -p 80:80 ${ECR_REGISTRY}/task-manager-nginx:latest
-                        
-                        echo "Deployment completed successfully!"
                         docker ps
-EOF
+                    EOF
                 """
             }
         }
