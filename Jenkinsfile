@@ -4,10 +4,6 @@ pipeline {
     environment {
         ECR_REGISTRY = '988698481528.dkr.ecr.ap-south-1.amazonaws.com'
         AWS_REGION = 'ap-south-1'
-        RDS_HOST = credentials('rds-host')
-        RDS_USER = credentials('rds-username')
-        RDS_PASSWORD = credentials('rds-password')
-        DB_NAME = 'taskdb'
     }
     
     stages {
@@ -70,7 +66,7 @@ pipeline {
         stage('Deploy') {
             steps {
                 sh """
-                    ssh -o StrictHostKeyChecking=no ubuntu@10.0.2.242 << 'EOF'
+                    ssh -o StrictHostKeyChecking=no ubuntu@10.0.2.242 "
                         aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${ECR_REGISTRY}
                         docker pull ${ECR_REGISTRY}/task-manager-nodejs:latest
                         docker pull ${ECR_REGISTRY}/task-manager-fastapi:latest
@@ -86,7 +82,7 @@ pipeline {
                         sleep 5
                         docker run -d --name task-nginx -p 80:80 ${ECR_REGISTRY}/task-manager-nginx:latest
                         docker ps
-                    EOF
+                    "
                 """
             }
         }
