@@ -4,10 +4,12 @@ services:
   mysql:
     image: mysql:8.0
     container_name: task-mysql
+    env_file:
+      - ./backend/.env
     environment:
-      MYSQL_DATABASE: taskdb
-      MYSQL_USER: taskuser
-      MYSQL_PASSWORD: taskpass123
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
       MYSQL_ROOT_PASSWORD: rootpass123
     volumes:
       - mysql_data:/var/lib/mysql
@@ -19,8 +21,67 @@ services:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-prootpass123"]
       timeout: 20s
       retries: 10
-      interval: 10s
-      start_period: 30s
+
+  nodejs:
+    build: ./backend/nodejs
+    container_name: task-nodejs
+    env_file:
+      - ./backend/.env
+    environment:
+      - BACKEND_NAME=Node.js
+    ports:
+      - "8001:3001"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - task-network
+
+  fastapi:
+    build: ./backend/fastapi
+    container_name: task-fastapi
+    env_file:
+      - ./backend/.env
+    environment:
+      - BACKEND_NAME=FastAPI
+    ports:
+      - "8002:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - task-network
+
+  springboot:
+    build: ./backend/springboot
+    container_name: task-springboot
+    env_file:
+      - ./backend/.env
+    environment:
+      - BACKEND_NAME=SpringBoot
+      - DB_URL=jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true
+    ports:
+      - "8003:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - task-network
+
+  dotnet:
+    build: ./backend/dotnet
+    container_name: task-dotnet
+    env_file:
+      - ./backend/.env
+    environment:
+      - BACKEND_NAME=.NET
+    ports:
+      - "8004:5000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - task-network
 
   nginx:
     build: ./nginx
@@ -35,82 +96,9 @@ services:
     networks:
       - task-network
 
-  nodejs:
-    build: ./backend/nodejs
-    container_name: task-nodejs
-    ports:
-      - "8001:3001"
-    environment:
-      - DB_HOST=mysql
-      - DB_USER=taskuser
-      - DB_PASSWORD=taskpass123
-      - DB_NAME=taskdb
-      - DB_PORT=3306
-      - PORT=3001
-      - BACKEND_NAME=Node.js
-    depends_on:
-      mysql:
-        condition: service_healthy
-    networks:
-      - task-network
-    restart: unless-stopped
-
-  fastapi:
-    build: ./backend/fastapi
-    container_name: task-fastapi
-    ports:
-      - "8002:8000"
-    environment:
-      - DATABASE_URL=mysql+pymysql://taskuser:taskpass123@mysql:3306/taskdb
-      - PORT=8000
-      - BACKEND_NAME=FastAPI
-    depends_on:
-      mysql:
-        condition: service_healthy
-    networks:
-      - task-network
-    restart: unless-stopped
-
-  springboot:
-    build: ./backend/springboot
-    container_name: task-springboot
-    ports:
-      - "8003:8080"
-    environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/taskdb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-      - SPRING_DATASOURCE_USERNAME=taskuser
-      - SPRING_DATASOURCE_PASSWORD=taskpass123
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
-      - SERVER_PORT=8080
-      - BACKEND_NAME=SpringBoot
-    depends_on:
-      mysql:
-        condition: service_healthy
-    networks:
-      - task-network
-    restart: unless-stopped
-
-  dotnet:
-    build: ./backend/dotnet
-    container_name: task-dotnet
-    ports:
-      - "8004:5000"
-    environment:
-      - ConnectionStrings__DefaultConnection=Server=mysql;Database=taskdb;User=taskuser;Password=taskpass123;
-      - ASPNETCORE_URLS=http://+:5000
-      - ASPNETCORE_ENVIRONMENT=Development
-      - BACKEND_NAME=.NET
-    depends_on:
-      mysql:
-        condition: service_healthy
-    networks:
-      - task-network
-    restart: unless-stopped
-
 networks:
   task-network:
     driver: bridge
 
 volumes:
   mysql_data:
-    driver: local
