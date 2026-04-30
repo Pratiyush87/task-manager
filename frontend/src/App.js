@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const API_BASE = 'http://localhost:80/api';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:80/api';
 
 function App() {
     const [selectedBackend, setSelectedBackend] = useState('nodejs');

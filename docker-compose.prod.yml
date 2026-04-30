@@ -1,30 +1,70 @@
 version: '3.8'
 
 services:
-  mysql:
-    image: task-manager-mysql:v1.0
-    container_name: task-mysql
+  nodejs:
+    image: 988698481528.dkr.ecr.ap-south-1.amazonaws.com/task-manager-nodejs:latest
+    container_name: task-nodejs
     environment:
-      MYSQL_DATABASE: taskdb
-      MYSQL_USER: taskuser
-      MYSQL_PASSWORD: taskpass123
-      MYSQL_ROOT_PASSWORD: rootpass123
-    volumes:
-      - mysql_data:/var/lib/mysql
+      - DB_HOST=${RDS_HOST}
+      - DB_USER=${RDS_USER}
+      - DB_PASSWORD=${RDS_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - BACKEND_NAME=Node.js
     ports:
-      - "3306:3306"
+      - "3001:3001"
     networks:
       - task-network
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-prootpass123"]
-      timeout: 20s
-      retries: 10
+    restart: unless-stopped
+
+  fastapi:
+    image: 988698481528.dkr.ecr.ap-south-1.amazonaws.com/task-manager-fastapi:latest
+    container_name: task-fastapi
+    environment:
+      - DB_HOST=${RDS_HOST}
+      - DB_USER=${RDS_USER}
+      - DB_PASSWORD=${RDS_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - BACKEND_NAME=FastAPI
+    ports:
+      - "8000:8000"
+    networks:
+      - task-network
+    restart: unless-stopped
+
+  springboot:
+    image: 988698481528.dkr.ecr.ap-south-1.amazonaws.com/task-manager-springboot:latest
+    container_name: task-springboot
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://${RDS_HOST}:3306/${DB_NAME}?useSSL=false
+      - SPRING_DATASOURCE_USERNAME=${RDS_USER}
+      - SPRING_DATASOURCE_PASSWORD=${RDS_PASSWORD}
+      - BACKEND_NAME=SpringBoot
+    ports:
+      - "8080:8080"
+    networks:
+      - task-network
+    restart: unless-stopped
+
+  dotnet:
+    image: 988698481528.dkr.ecr.ap-south-1.amazonaws.com/task-manager-dotnet:latest
+    container_name: task-dotnet
+    environment:
+      - ASPNETCORE_URLS=http://+:5000
+      - ConnectionStrings__DefaultConnection=Server=${RDS_HOST};Database=${DB_NAME};User=${RDS_USER};Password=${RDS_PASSWORD};
+      - BACKEND_NAME=.NET
+    ports:
+      - "5000:5000"
+    networks:
+      - task-network
+    restart: unless-stopped
 
   nginx:
-    image: task-manager-nginx:v1.0
+    image: 988698481528.dkr.ecr.ap-south-1.amazonaws.com/task-manager-nginx:latest
     container_name: task-nginx
     ports:
       - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - nodejs
       - fastapi
@@ -32,75 +72,8 @@ services:
       - dotnet
     networks:
       - task-network
-
-  nodejs:
-    image: task-manager-nodejs:v1.0
-    container_name: task-nodejs
-    ports:
-      - "8001:3001"
-    environment:
-      - DB_HOST=mysql
-      - DB_USER=taskuser
-      - DB_PASSWORD=taskpass123
-      - DB_NAME=taskdb
-      - PORT=3001
-      - BACKEND_NAME=Node.js
-    depends_on:
-      mysql:
-        condition: service_healthy
-    networks:
-      - task-network
-
-  fastapi:
-    image: task-manager-fastapi:v1.0
-    container_name: task-fastapi
-    ports:
-      - "8002:8000"
-    environment:
-      - DATABASE_URL=mysql+pymysql://taskuser:taskpass123@mysql:3306/taskdb
-      - BACKEND_NAME=FastAPI
-    depends_on:
-      mysql:
-        condition: service_healthy
-    networks:
-      - task-network
-
-  springboot:
-    image: task-manager-springboot:v1.0
-    container_name: task-springboot
-    ports:
-      - "8003:8080"
-    environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/taskdb?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=taskuser
-      - SPRING_DATASOURCE_PASSWORD=taskpass123
-      - SERVER_PORT=8080
-      - BACKEND_NAME=SpringBoot
-    depends_on:
-      mysql:
-        condition: service_healthy
-    networks:
-      - task-network
-
-  dotnet:
-    image: task-manager-dotnet:v1.0
-    container_name: task-dotnet
-    ports:
-      - "8004:5000"
-    environment:
-      - ConnectionStrings__DefaultConnection=Server=mysql;Database=taskdb;User=taskuser;Password=taskpass123;
-      - ASPNETCORE_URLS=http://+:5000
-      - BACKEND_NAME=.NET
-    depends_on:
-      mysql:
-        condition: service_healthy
-    networks:
-      - task-network
+    restart: unless-stopped
 
 networks:
   task-network:
     driver: bridge
-
-volumes:
-  mysql_data:
-    driver: local
