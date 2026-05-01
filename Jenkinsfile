@@ -8,17 +8,12 @@ pipeline {
         RDS_USER = credentials('rds-username')
         RDS_PASSWORD = credentials('rds-password')
         DB_NAME = 'taskdb'
-        BUILD_TIMESTAMP = sh(script: 'date +%Y%m%d-%H%M%S', returnStdout: true).trim()
     }
     
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
-                script {
-                    GIT_COMMIT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-                    IMAGE_VERSION = "${GIT_COMMIT}-${BUILD_TIMESTAMP}"
-                }
             }
         }
         
@@ -35,9 +30,7 @@ pipeline {
                         sh """
                             cd backend/nodejs
                             docker build -t ${ECR_REGISTRY}/task-manager-nodejs:latest .
-                            docker build -t ${ECR_REGISTRY}/task-manager-nodejs:${IMAGE_VERSION} .
                             docker push ${ECR_REGISTRY}/task-manager-nodejs:latest
-                            docker push ${ECR_REGISTRY}/task-manager-nodejs:${IMAGE_VERSION}
                         """
                     }
                 }
@@ -46,9 +39,7 @@ pipeline {
                         sh """
                             cd backend/fastapi
                             docker build -t ${ECR_REGISTRY}/task-manager-fastapi:latest .
-                            docker build -t ${ECR_REGISTRY}/task-manager-fastapi:${IMAGE_VERSION} .
                             docker push ${ECR_REGISTRY}/task-manager-fastapi:latest
-                            docker push ${ECR_REGISTRY}/task-manager-fastapi:${IMAGE_VERSION}
                         """
                     }
                 }
@@ -57,9 +48,7 @@ pipeline {
                         sh """
                             cd backend/springboot
                             docker build -t ${ECR_REGISTRY}/task-manager-springboot:latest .
-                            docker build -t ${ECR_REGISTRY}/task-manager-springboot:${IMAGE_VERSION} .
                             docker push ${ECR_REGISTRY}/task-manager-springboot:latest
-                            docker push ${ECR_REGISTRY}/task-manager-springboot:${IMAGE_VERSION}
                         """
                     }
                 }
@@ -68,9 +57,7 @@ pipeline {
                         sh """
                             cd backend/dotnet
                             docker build -t ${ECR_REGISTRY}/task-manager-dotnet:latest .
-                            docker build -t ${ECR_REGISTRY}/task-manager-dotnet:${IMAGE_VERSION} .
                             docker push ${ECR_REGISTRY}/task-manager-dotnet:latest
-                            docker push ${ECR_REGISTRY}/task-manager-dotnet:${IMAGE_VERSION}
                         """
                     }
                 }
@@ -79,9 +66,7 @@ pipeline {
                         sh """
                             cd nginx
                             docker build -t ${ECR_REGISTRY}/task-manager-nginx:latest .
-                            docker build -t ${ECR_REGISTRY}/task-manager-nginx:${IMAGE_VERSION} .
                             docker push ${ECR_REGISTRY}/task-manager-nginx:latest
-                            docker push ${ECR_REGISTRY}/task-manager-nginx:${IMAGE_VERSION}
                         """
                     }
                 }
@@ -94,30 +79,95 @@ pipeline {
                     ssh -o StrictHostKeyChecking=no ubuntu@10.0.2.242 '
                         aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${ECR_REGISTRY}
                         
-                        docker pull ${ECR_REGISTRY}/task-manager-nodejs:latest
-                        docker pull ${ECR_REGISTRY}/task-manager-fastapi:latest
-                        docker pull ${ECR_REGISTRY}/task-manager-springboot:latest
-                        docker pull ${ECR_REGISTRY}/task-manager-dotnet:latest
-                        docker pull ${ECR_REGISTRY}/task-manager-nginx:latest
+                        cd /home/ubuntu/task-manager
                         
-                        docker stop task-nodejs task-fastapi task-springboot task-dotnet task-nginx 2>/dev/null || true
-                        docker rm task-nodejs task-fastapi task-springboot task-dotnet task-nginx 2>/dev/null || true
+                        # Create docker-compose.prod.yml if not exists
+                        cat > docker-compose.prod.yml << 'EOF'
+version: \"3.8\"
+
+services:
+  nodejs:
+    image: ${ECR_REGISTRY}/task-manager-nodejs:latest
+    container_name: task-nodejs
+    environment:
+      - DB_HOST=${RDS_HOST}
+      - DB_USER=${RDS_USER}
+      - DB_PASSWORD=${RDS_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - BACKEND_NAME=Node.js
+    ports:
+      - \"3001:3001\"
+    networks:
+      - task-network
+    restart: unless-stopped
+
+  fastapi:
+    image: ${ECR_REGISTRY}/task-manager-fastapi:latest
+    container_name: task-fastapi
+    environment:
+      - DB_HOST=${RDS_HOST}
+      - DB_USER=${RDS_USER}
+      - DB_PASSWORD=${RDS_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - BACKEND_NAME=FastAPI
+    ports:
+      - \"8000:8000\"
+    networks:
+      - task-network
+    restart: unless-stopped
+
+  springboot:
+    image: ${ECR_REGISTRY}/task-manager-springboot:latest
+    container_name: task-springboot
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://${RDS_HOST}:3306/${DB_NAME}?useSSL=false
+      - SPRING_DATASOURCE_USERNAME=${RDS_USER}
+      - SPRING_DATASOURCE_PASSWORD=${RDS_PASSWORD}
+      - BACKEND_NAME=SpringBoot
+    ports:
+      - \"8080:8080\"
+    networks:
+      - task-network
+    restart: unless-stopped
+
+  dotnet:
+    image: ${ECR_REGISTRY}/task-manager-dotnet:latest
+    container_name: task-dotnet
+    environment:
+      - ASPNETCORE_URLS=http://+:5000
+      - ConnectionStrings__DefaultConnection=Server=${RDS_HOST};Database=${DB_NAME};User=${RDS_USER};Password=${RDS_PASSWORD};
+      - BACKEND_NAME=.NET
+    ports:
+      - \"5000:5000\"
+    networks:
+      - task-network
+    restart: unless-stopped
+
+  nginx:
+    image: ${ECR_REGISTRY}/task-manager-nginx:latest
+    container_name: task-nginx
+    ports:
+      - \"80:80\"
+    depends_on:
+      - nodejs
+      - fastapi
+      - springboot
+      - dotnet
+    networks:
+      - task-network
+    restart: unless-stopped
+
+networks:
+  task-network:
+    driver: bridge
+EOF
                         
-                        docker network create task-network 2>/dev/null || true
+                        # Pull latest images and restart
+                        docker-compose -f docker-compose.prod.yml down 2>/dev/null || true
+                        docker-compose -f docker-compose.prod.yml pull
+                        docker-compose -f docker-compose.prod.yml up -d
                         
-                        docker run -d --name task-nodejs --network task-network -e DB_HOST=${RDS_HOST} -e DB_USER=${RDS_USER} -e DB_PASSWORD=${RDS_PASSWORD} -e DB_NAME=${DB_NAME} -p 3001:3001 ${ECR_REGISTRY}/task-manager-nodejs:latest
-                        
-                        docker run -d --name task-fastapi --network task-network -e DB_HOST=${RDS_HOST} -e DB_USER=${RDS_USER} -e DB_PASSWORD=${RDS_PASSWORD} -e DB_NAME=${DB_NAME} -p 8000:8000 ${ECR_REGISTRY}/task-manager-fastapi:latest
-                        
-                        docker run -d --name task-springboot --network task-network -e SPRING_DATASOURCE_URL="jdbc:mysql://${RDS_HOST}:3306/${DB_NAME}?useSSL=false" -e SPRING_DATASOURCE_USERNAME=${RDS_USER} -e SPRING_DATASOURCE_PASSWORD=${RDS_PASSWORD} -p 8080:8080 ${ECR_REGISTRY}/task-manager-springboot:latest
-                        
-                        docker run -d --name task-dotnet --network task-network -e ASPNETCORE_URLS="http://+:5000" -e "ConnectionStrings__DefaultConnection=Server=${RDS_HOST};Database=${DB_NAME};User=${RDS_USER};Password=${RDS_PASSWORD};" -p 5000:5000 ${ECR_REGISTRY}/task-manager-dotnet:latest
-                        
-                        sleep 10
-                        
-                        docker run -d --name task-nginx --network task-network -p 80:80 ${ECR_REGISTRY}/task-manager-nginx:latest
-                        
-                        echo "Deployment Complete"
+                        echo \"Deployment Complete\"
                         docker ps
                     '
                 """
@@ -127,10 +177,10 @@ pipeline {
     
     post {
         success {
-            echo "Deployment successful! Version: ${IMAGE_VERSION}"
+            echo '✅ Deployment successful!'
         }
         failure {
-            echo 'Deployment failed! Please check the logs.'
+            echo '❌ Deployment failed! Please check the logs.'
         }
     }
 }
