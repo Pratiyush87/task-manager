@@ -5,10 +5,10 @@ services:
     image: 988698481528.dkr.ecr.ap-south-1.amazonaws.com/task-manager-nodejs:latest
     container_name: task-nodejs
     environment:
-      - DB_HOST=${RDS_HOST}
-      - DB_USER=${RDS_USER}
-      - DB_PASSWORD=${RDS_PASSWORD}
-      - DB_NAME=${DB_NAME}
+      - DB_HOST=task-manager-db.cjuk8iq2c0jm.ap-south-1.rds.amazonaws.com
+      - DB_USER=admin
+      - DB_PASSWORD=Admin123456
+      - DB_NAME=taskdb
       - BACKEND_NAME=Node.js
     ports:
       - "3001:3001"
@@ -20,10 +20,10 @@ services:
     image: 988698481528.dkr.ecr.ap-south-1.amazonaws.com/task-manager-fastapi:latest
     container_name: task-fastapi
     environment:
-      - DB_HOST=${RDS_HOST}
-      - DB_USER=${RDS_USER}
-      - DB_PASSWORD=${RDS_PASSWORD}
-      - DB_NAME=${DB_NAME}
+      - DB_HOST=task-manager-db.cjuk8iq2c0jm.ap-south-1.rds.amazonaws.com
+      - DB_USER=admin
+      - DB_PASSWORD=Admin123456
+      - DB_NAME=taskdb
       - BACKEND_NAME=FastAPI
     ports:
       - "8000:8000"
@@ -35,9 +35,9 @@ services:
     image: 988698481528.dkr.ecr.ap-south-1.amazonaws.com/task-manager-springboot:latest
     container_name: task-springboot
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://${RDS_HOST}:3306/${DB_NAME}?useSSL=false
-      - SPRING_DATASOURCE_USERNAME=${RDS_USER}
-      - SPRING_DATASOURCE_PASSWORD=${RDS_PASSWORD}
+      - SPRING_DATASOURCE_URL=jdbc:mysql://task-manager-db.cjuk8iq2c0jm.ap-south-1.rds.amazonaws.com:3306/taskdb?useSSL=false
+      - SPRING_DATASOURCE_USERNAME=admin
+      - SPRING_DATASOURCE_PASSWORD=Admin123456
       - BACKEND_NAME=SpringBoot
     ports:
       - "8080:8080"
@@ -50,7 +50,7 @@ services:
     container_name: task-dotnet
     environment:
       - ASPNETCORE_URLS=http://+:5000
-      - ConnectionStrings__DefaultConnection=Server=${RDS_HOST};Database=${DB_NAME};User=${RDS_USER};Password=${RDS_PASSWORD};
+      - ConnectionStrings__DefaultConnection=Server=task-manager-db.cjuk8iq2c0jm.ap-south-1.rds.amazonaws.com;Database=taskdb;User=admin;Password=Admin123456;
       - BACKEND_NAME=.NET
     ports:
       - "5000:5000"
