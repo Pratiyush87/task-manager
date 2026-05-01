@@ -17,11 +17,12 @@ pipeline {
         stage('Fetch Secrets from AWS Secrets Manager') {
             steps {
                 script {
-                    // Fetch RDS credentials from AWS Secrets Manager
+                    // Fetch and parse secrets using sh and groovy
                     def secretJson = sh(script: "aws secretsmanager get-secret-value --secret-id ${SECRET_NAME} --region ${AWS_REGION} --query SecretString --output text", returnStdout: true).trim()
-                    def secrets = readJSON text: secretJson
                     
-                    // Set environment variables
+                    // Parse JSON using Groovy (no readJSON needed)
+                    def secrets = new groovy.json.JsonSlurper().parseText(secretJson)
+                    
                     env.RDS_HOST = secrets.DB_HOST
                     env.RDS_USER = secrets.DB_USER
                     env.RDS_PASSWORD = secrets.DB_PASSWORD
@@ -91,12 +92,12 @@ pipeline {
         stage('Deploy to App Server') {
             steps {
                 sh """
-                    ssh -o StrictHostKeyChecking=no ubuntu@10.0.2.242 '
-                        aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    ssh -o StrictHostKeyChecking=no ubuntu@10.0.2.242 "
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
                         
                         cd /home/ubuntu/task-manager
                         
-                        # Create docker-compose.prod.yml if not exists
+                        # Create docker-compose.prod.yml
                         cat > docker-compose.prod.yml << 'EOF'
 version: \"3.8\"
 
@@ -177,14 +178,13 @@ networks:
     driver: bridge
 EOF
                         
-                        # Pull latest images and restart
                         docker-compose -f docker-compose.prod.yml down 2>/dev/null || true
                         docker-compose -f docker-compose.prod.yml pull
                         docker-compose -f docker-compose.prod.yml up -d
                         
-                        echo \"Deployment Complete\"
+                        echo 'Deployment Complete'
                         docker ps
-                    '
+                    "
                 """
             }
         }
@@ -192,10 +192,10 @@ EOF
     
     post {
         success {
-            echo '✅ Deployment successful! Secrets fetched from AWS Secrets Manager'
+            echo 'Deployment successful!'
         }
         failure {
-            echo '❌ Deployment failed! Please check the logs.'
+            echo 'Deployment failed! Please check the logs.'
         }
     }
 }
