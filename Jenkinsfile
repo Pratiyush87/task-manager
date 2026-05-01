@@ -4,29 +4,16 @@ pipeline {
     environment {
         ECR_REGISTRY = '988698481528.dkr.ecr.ap-south-1.amazonaws.com'
         AWS_REGION = 'ap-south-1'
-        SECRET_NAME = 'task-manager-rds-secrets'
+        RDS_HOST = credentials('rds-host')
+        RDS_USER = credentials('rds-username')
+        RDS_PASSWORD = credentials('rds-password')
+        DB_NAME = 'taskdb'
     }
     
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
-            }
-        }
-        
-        stage('Fetch Secrets from AWS Secrets Manager') {
-            steps {
-                script {
-                    def secretJson = sh(script: "aws secretsmanager get-secret-value --secret-id ${SECRET_NAME} --region ${AWS_REGION} --query SecretString --output text", returnStdout: true).trim()
-                    def secrets = new groovy.json.JsonSlurper().parseText(secretJson)
-                    
-                    env.RDS_HOST = secrets.DB_HOST
-                    env.RDS_USER = secrets.DB_USER
-                    env.RDS_PASSWORD = secrets.DB_PASSWORD
-                    env.DB_NAME = secrets.DB_NAME
-                    
-                    echo "✅ Secrets fetched from AWS Secrets Manager"
-                }
             }
         }
         
@@ -90,20 +77,15 @@ pipeline {
             steps {
                 sh """
                     ssh -o StrictHostKeyChecking=no ubuntu@10.0.2.242 '
+                        cd /home/ubuntu/task-manager
+                        git pull origin main
+                        
                         aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
                         
-                        cd /home/ubuntu/task-manager
-                        
-                        # Pull latest images
-                        docker-compose -f docker-compose.prod.yml pull 2>/dev/null || true
-                        
-                        # Stop and remove old containers
                         docker-compose -f docker-compose.prod.yml down 2>/dev/null || true
-                        
-                        # Start new containers
+                        docker-compose -f docker-compose.prod.yml pull
                         docker-compose -f docker-compose.prod.yml up -d
                         
-                        echo "Deployment Complete"
                         docker ps
                     '
                 """
