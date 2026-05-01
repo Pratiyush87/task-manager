@@ -4,16 +4,31 @@ pipeline {
     environment {
         ECR_REGISTRY = '988698481528.dkr.ecr.ap-south-1.amazonaws.com'
         AWS_REGION = 'ap-south-1'
-        RDS_HOST = credentials('rds-host')
-        RDS_USER = credentials('rds-username')
-        RDS_PASSWORD = credentials('rds-password')
-        DB_NAME = 'taskdb'
+        SECRET_NAME = 'task-manager-rds-secrets'
     }
     
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
+            }
+        }
+        
+        stage('Fetch Secrets from AWS Secrets Manager') {
+            steps {
+                script {
+                    // Fetch RDS credentials from AWS Secrets Manager
+                    def secretJson = sh(script: "aws secretsmanager get-secret-value --secret-id ${SECRET_NAME} --region ${AWS_REGION} --query SecretString --output text", returnStdout: true).trim()
+                    def secrets = readJSON text: secretJson
+                    
+                    // Set environment variables
+                    env.RDS_HOST = secrets.DB_HOST
+                    env.RDS_USER = secrets.DB_USER
+                    env.RDS_PASSWORD = secrets.DB_PASSWORD
+                    env.DB_NAME = secrets.DB_NAME
+                    
+                    echo "✅ Secrets fetched from AWS Secrets Manager"
+                }
             }
         }
         
@@ -177,7 +192,7 @@ EOF
     
     post {
         success {
-            echo '✅ Deployment successful!'
+            echo '✅ Deployment successful! Secrets fetched from AWS Secrets Manager'
         }
         failure {
             echo '❌ Deployment failed! Please check the logs.'
