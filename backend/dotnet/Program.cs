@@ -28,9 +28,6 @@ var serverVersion = new MySqlServerVersion(new Version(8, 0, 0));
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseMySql(connectionString, serverVersion));
 
-// Add Prometheus metrics
-builder.Services.AddHttpMetrics();
-
 var app = builder.Build();
 
 // Ensure database is created
@@ -45,7 +42,7 @@ app.UseCors("AllowAll");
 app.UseAuthorization();
 app.MapControllers();
 
-// Add Prometheus metrics middleware and endpoint
+// Add Prometheus metrics
 app.UseHttpMetrics();
 app.MapMetrics();
 
