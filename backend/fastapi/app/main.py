@@ -11,12 +11,16 @@ import os
 from dotenv import load_dotenv
 import pathlib
 
+# Prometheus metrics
+from prometheus_fastapi_instrumentator import Instrumentator
+
 # Load env from parent directory
 env_path = pathlib.Path(__file__).parent.parent.parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
 app = FastAPI()
 
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,6 +28,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add Prometheus instrumentation (exposes /metrics endpoint automatically)
+Instrumentator().instrument(app).expose(app)
 
 # Database setup for MySQL
 DB_HOST = os.getenv('DB_HOST', 'mysql')
