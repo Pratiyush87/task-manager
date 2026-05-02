@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TaskManager.Data;
 using MySqlConnector;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,6 +28,9 @@ var serverVersion = new MySqlServerVersion(new Version(8, 0, 0));
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseMySql(connectionString, serverVersion));
 
+// Add Prometheus metrics
+builder.Services.AddHttpMetrics();
+
 var app = builder.Build();
 
 // Ensure database is created
@@ -40,6 +44,10 @@ using (var scope = app.Services.CreateScope())
 app.UseCors("AllowAll");
 app.UseAuthorization();
 app.MapControllers();
+
+// Add Prometheus metrics middleware and endpoint
+app.UseHttpMetrics();
+app.MapMetrics();
 
 var backendName = app.Configuration["BackendName"] ?? ".NET";
 Console.WriteLine($".NET backend running - {backendName}");
