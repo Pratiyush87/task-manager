@@ -29,6 +29,10 @@ public class Task {
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+        // FIXED: Ensure status is set before saving
+        if (status == null || status.isEmpty()) {
+            status = "pending";
+        }
     }
     
     @PreUpdate

@@ -31,11 +31,11 @@ exports.getTaskById = async (req, res) => {
 
 exports.createTask = async (req, res) => {
   try {
-    const { title, description } = req.body;
+    const { title, description, status } = req.body;
     if (!title) {
       return res.status(400).json({ success: false, error: 'Title is required' });
     }
-    const task = await Task.create(title, description);
+    const task = await Task.create(title, description, status);
     res.status(201).json({
       success: true,
       backend: process.env.BACKEND_NAME || 'Node.js',

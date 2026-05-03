@@ -11,7 +11,6 @@ class Task {
     return rows[0];
   }
 
-  // FIXED: Added status parameter with default value 'pending'
   static async create(title, description, status = 'pending') {
     const [result] = await pool.query(
       'INSERT INTO tasks (title, description, status) VALUES (?, ?, ?)',
@@ -22,7 +21,7 @@ class Task {
   }
 
   static async update(id, title, description, status) {
-    await pool.query(
+    const [result] = await pool.query(
       'UPDATE tasks SET title = ?, description = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       [title, description, status, id]
     );

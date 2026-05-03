@@ -29,7 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add Prometheus instrumentation (exposes /metrics endpoint automatically)
+# Add Prometheus instrumentation
 Instrumentator().instrument(app).expose(app)
 
 # Database setup for MySQL
@@ -55,11 +55,11 @@ class TaskModel(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())
 
-# FIXED: Pydantic Models - Added status to TaskCreate
+# Pydantic Models
 class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
-    status: Optional[str] = 'pending'  # ADDED: status field with default
+    status: Optional[str] = "pending"
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
@@ -96,16 +96,10 @@ def get_task(task_id: int):
         raise HTTPException(status_code=404, detail="Task not found")
     return {"success": True, "backend": BACKEND_NAME, "data": task}
 
-# FIXED: Updated create_task to include status
 @app.post("/api/tasks")
 def create_task(task: TaskCreate):
     db = SessionLocal()
-    # Now includes status from the request
-    db_task = TaskModel(
-        title=task.title, 
-        description=task.description,
-        status=task.status if task.status else 'pending'  # Use provided status or default
-    )
+    db_task = TaskModel(title=task.title, description=task.description, status=task.status)
     db.add(db_task)
     db.commit()
     db.refresh(db_task)

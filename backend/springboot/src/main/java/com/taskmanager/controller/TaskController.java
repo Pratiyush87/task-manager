@@ -67,14 +67,12 @@ public class TaskController {
                 .body(Map.of("success", false, "error", "Task not found")));
     }
     
-    // FIXED: createTask now explicitly handles status
     @PostMapping("/tasks")
     public ResponseEntity<Map<String, Object>> createTask(@RequestBody Task task) {
-        // Ensure status is set (default to 'pending' if not provided)
+        // Set default status if not provided
         if (task.getStatus() == null || task.getStatus().isEmpty()) {
             task.setStatus("pending");
         }
-        
         Task savedTask = taskRepository.save(task);
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);

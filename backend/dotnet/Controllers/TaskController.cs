@@ -80,6 +80,7 @@ public class TaskController : ControllerBase
         
         taskItem.CreatedAt = DateTime.Now;
         
+        // Use status from request, default to "pending" if not provided
         if (string.IsNullOrEmpty(taskItem.Status))
         {
             taskItem.Status = "pending";
