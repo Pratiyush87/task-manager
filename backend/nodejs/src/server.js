@@ -1,8 +1,8 @@
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const client = require('prom-client');
 const taskRoutes = require('./routes/taskRoutes');
+const getConnection = require('./config/database');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -51,7 +51,20 @@ app.get('/', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Node.js backend running on port ${PORT}`);
-  console.log(`Backend name: ${process.env.BACKEND_NAME || 'Node.js'}`);
-});
+// Ensure database connection is ready before starting
+async function startServer() {
+    try {
+        await getConnection();
+        console.log('Database connection established via AWS Secrets Manager');
+        
+        app.listen(PORT, () => {
+            console.log(`Node.js backend running on port ${PORT}`);
+            console.log(`Backend name: ${process.env.BACKEND_NAME || 'Node.js'}`);
+        });
+    } catch (error) {
+        console.error('Failed to connect to database:', error);
+        process.exit(1);
+    }
+}
+
+startServer();

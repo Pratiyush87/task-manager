@@ -12,7 +12,8 @@
     "mysql2": "^3.6.5",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "prom-client": "^15.1.0"
+    "prom-client": "^15.1.0",
+    "@aws-sdk/client-secrets-manager": "^3.525.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
