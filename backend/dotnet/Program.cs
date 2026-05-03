@@ -21,8 +21,32 @@ builder.Services.AddCors(options =>
         });
 });
 
-// Configure MySQL Database
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+// Fetch database credentials from AWS Secrets Manager before building the app
+RdsCredentials? dbCredentials = null;
+try
+{
+    dbCredentials = await SecretsManagerHelper.GetDatabaseCredentialsAsync();
+    Console.WriteLine("Successfully fetched credentials from AWS Secrets Manager");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Failed to fetch from Secrets Manager: {ex.Message}");
+    Console.WriteLine("Falling back to connection string from configuration");
+}
+
+// Configure MySQL Database connection string
+string connectionString;
+if (dbCredentials != null)
+{
+    connectionString = $"Server={dbCredentials.DB_HOST};Database={dbCredentials.DB_NAME};User={dbCredentials.DB_USER};Password={dbCredentials.DB_PASSWORD};";
+    Console.WriteLine($"Using database: {dbCredentials.DB_HOST}:{dbCredentials.DB_PORT}/{dbCredentials.DB_NAME}");
+}
+else
+{
+    connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+        ?? "Server=mysql;Database=taskdb;User=taskuser;Password=taskpass123;";
+}
+
 var serverVersion = new MySqlServerVersion(new Version(8, 0, 0));
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
