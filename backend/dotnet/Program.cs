@@ -26,36 +26,48 @@ builder.Services.AddCors(options =>
 
 // Fetch database credentials from AWS Secrets Manager
 string? connectionString = null;
+
 try
 {
-    var client = new AmazonSecretsManagerClient(RegionEndpoint.APSoutheast1);
-    var request = new GetSecretValueRequest { SecretId = "task-manager-rds-secrets" };
-    var response = await client.GetSecretValueAsync(request);
+    // Make the client call synchronous since we're not in an async method
+    using var client = new AmazonSecretsManagerClient(RegionEndpoint.APSoutheast1);
+    var request = new GetSecretValueRequest { SecretId = "task-manager-rds-secrets-3dghPg" };
+    var response = client.GetSecretValueAsync(request).GetAwaiter().GetResult();
     var secrets = JsonSerializer.Deserialize<Dictionary<string, string>>(response.SecretString);
     
     if (secrets != null)
     {
-        var host = secrets.GetValueOrDefault("DB_HOST", "mysql");
-        var user = secrets.GetValueOrDefault("DB_USER", "taskuser");
-        var password = secrets.GetValueOrDefault("DB_PASSWORD", "taskpass123");
+        var host = secrets.GetValueOrDefault("DB_HOST", "task-manager-db.cjuk8iq2c0jm.ap-south-1.rds.amazonaws.com");
+        var user = secrets.GetValueOrDefault("DB_USER", "admin");
+        var password = secrets.GetValueOrDefault("DB_PASSWORD", "Admin123456");
         var database = secrets.GetValueOrDefault("DB_NAME", "taskdb");
         
         connectionString = $"Server={host};Database={database};User={user};Password={password};";
-        Console.WriteLine("Database credentials fetched from AWS Secrets Manager");
+        Console.WriteLine("✅ Database credentials fetched from AWS Secrets Manager");
         Console.WriteLine($"Using database: {host}/{database}");
     }
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"Failed to fetch from Secrets Manager: {ex.Message}");
-    connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    Console.WriteLine($"❌ Failed to fetch from Secrets Manager: {ex.Message}");
+    
+    // Fallback to environment variables
+    var host = Environment.GetEnvironmentVariable("DB_HOST") ?? "task-manager-db.cjuk8iq2c0jm.ap-south-1.rds.amazonaws.com";
+    var user = Environment.GetEnvironmentVariable("DB_USER") ?? "admin";
+    var password = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "Admin123456";
+    var database = Environment.GetEnvironmentVariable("DB_NAME") ?? "taskdb";
+    
+    connectionString = $"Server={host};Database={database};User={user};Password={password};";
+    Console.WriteLine("Using environment variables for database connection");
 }
 
 if (string.IsNullOrEmpty(connectionString))
 {
-    connectionString = "Server=mysql;Database=taskdb;User=taskuser;Password=taskpass123;";
-    Console.WriteLine("Using fallback connection string");
+    connectionString = "Server=task-manager-db.cjuk8iq2c0jm.ap-south-1.rds.amazonaws.com;Database=taskdb;User=admin;Password=Admin123456;";
+    Console.WriteLine("Using hardcoded RDS connection string");
 }
+
+Console.WriteLine($"Connecting to: {connectionString.Split(';')[0].Split('=')[1]}");
 
 var serverVersion = new MySqlServerVersion(new Version(8, 0, 0));
 
@@ -68,7 +80,16 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    dbContext.Database.EnsureCreated();
+    try
+    {
+        dbContext.Database.EnsureCreated();
+        Console.WriteLine("✅ Database connection successful!");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"❌ Database connection failed: {ex.Message}");
+        throw;
+    }
 }
 
 // Configure pipeline
@@ -80,7 +101,7 @@ app.MapControllers();
 app.UseHttpMetrics();
 app.MapMetrics();
 
-var backendName = app.Configuration["BackendName"] ?? ".NET";
+var backendName = Environment.GetEnvironmentVariable("BACKEND_NAME") ?? ".NET";
 Console.WriteLine($".NET backend running - {backendName}");
 
 app.Run();
