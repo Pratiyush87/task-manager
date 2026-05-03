@@ -11,10 +11,11 @@ class Task {
     return rows[0];
   }
 
-  static async create(title, description) {
+  // FIXED: Added status parameter with default value 'pending'
+  static async create(title, description, status = 'pending') {
     const [result] = await pool.query(
-      'INSERT INTO tasks (title, description) VALUES (?, ?)',
-      [title, description]
+      'INSERT INTO tasks (title, description, status) VALUES (?, ?, ?)',
+      [title, description, status]
     );
     const [rows] = await pool.query('SELECT * FROM tasks WHERE id = ?', [result.insertId]);
     return rows[0];
