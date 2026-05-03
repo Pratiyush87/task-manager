@@ -7,50 +7,6 @@ using Amazon.SecretsManager;
 using Amazon.SecretsManager.Model;
 using System.Text.Json;
 
-namespace TaskManager;
-
-public class RdsCredentials
-{
-    public string DB_HOST { get; set; } = string.Empty;
-    public string DB_USER { get; set; } = string.Empty;
-    public string DB_PASSWORD { get; set; } = string.Empty;
-    public string DB_NAME { get; set; } = "taskdb";
-    public int DB_PORT { get; set; } = 3306;
-}
-
-public static class SecretsManagerHelper
-{
-    private static readonly string SecretName = "task-manager-rds-secrets";
-    private static readonly string Region = "ap-south-1";
-    
-    private static RdsCredentials? _cachedCredentials;
-    
-    public static async Task<RdsCredentials?> GetDatabaseCredentialsAsync()
-    {
-        if (_cachedCredentials != null)
-            return _cachedCredentials;
-        
-        var client = new AmazonSecretsManagerClient(RegionEndpoint.GetBySystemName(Region));
-        var request = new GetSecretValueRequest { SecretId = SecretName };
-        
-        try
-        {
-            var response = await client.GetSecretValueAsync(request);
-            var secretString = response.SecretString;
-            var credentials = JsonSerializer.Deserialize<RdsCredentials>(secretString);
-            
-            _cachedCredentials = credentials;
-            Console.WriteLine("Database credentials fetched from AWS Secrets Manager");
-            return credentials;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error fetching secrets: {ex.Message}");
-            return null;
-        }
-    }
-}
-
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
@@ -60,41 +16,44 @@ builder.Services.AddEndpointsApiExplorer();
 // Configure CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll",
-        builder =>
-        {
-            builder.AllowAnyOrigin()
-                   .AllowAnyMethod()
-                   .AllowAnyHeader();
-        });
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
 });
 
 // Fetch database credentials from AWS Secrets Manager
-RdsCredentials? dbCredentials = null;
+string? connectionString = null;
 try
 {
-    dbCredentials = await SecretsManagerHelper.GetDatabaseCredentialsAsync();
-    if (dbCredentials != null)
+    var client = new AmazonSecretsManagerClient(RegionEndpoint.APSoutheast1);
+    var request = new GetSecretValueRequest { SecretId = "task-manager-rds-secrets" };
+    var response = await client.GetSecretValueAsync(request);
+    var secrets = JsonSerializer.Deserialize<Dictionary<string, string>>(response.SecretString);
+    
+    if (secrets != null)
     {
-        Console.WriteLine("Successfully fetched credentials from AWS Secrets Manager");
+        var host = secrets.GetValueOrDefault("DB_HOST", "mysql");
+        var user = secrets.GetValueOrDefault("DB_USER", "taskuser");
+        var password = secrets.GetValueOrDefault("DB_PASSWORD", "taskpass123");
+        var database = secrets.GetValueOrDefault("DB_NAME", "taskdb");
+        
+        connectionString = $"Server={host};Database={database};User={user};Password={password};";
+        Console.WriteLine("Database credentials fetched from AWS Secrets Manager");
+        Console.WriteLine($"Using database: {host}/{database}");
     }
 }
 catch (Exception ex)
 {
     Console.WriteLine($"Failed to fetch from Secrets Manager: {ex.Message}");
+    connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 }
 
-// Configure MySQL Database connection string
-string connectionString;
-if (dbCredentials != null)
+if (string.IsNullOrEmpty(connectionString))
 {
-    connectionString = $"Server={dbCredentials.DB_HOST};Database={dbCredentials.DB_NAME};User={dbCredentials.DB_USER};Password={dbCredentials.DB_PASSWORD};";
-    Console.WriteLine($"Using database: {dbCredentials.DB_HOST}:{dbCredentials.DB_PORT}/{dbCredentials.DB_NAME}");
-}
-else
-{
-    connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
-        ?? "Server=mysql;Database=taskdb;User=taskuser;Password=taskpass123;";
+    connectionString = "Server=mysql;Database=taskdb;User=taskuser;Password=taskpass123;";
     Console.WriteLine("Using fallback connection string");
 }
 
