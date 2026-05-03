@@ -21,17 +21,19 @@ builder.Services.AddCors(options =>
         });
 });
 
-// Fetch database credentials from AWS Secrets Manager before building the app
+// Fetch database credentials from AWS Secrets Manager
 RdsCredentials? dbCredentials = null;
 try
 {
     dbCredentials = await SecretsManagerHelper.GetDatabaseCredentialsAsync();
-    Console.WriteLine("Successfully fetched credentials from AWS Secrets Manager");
+    if (dbCredentials != null)
+    {
+        Console.WriteLine("Successfully fetched credentials from AWS Secrets Manager");
+    }
 }
 catch (Exception ex)
 {
     Console.WriteLine($"Failed to fetch from Secrets Manager: {ex.Message}");
-    Console.WriteLine("Falling back to connection string from configuration");
 }
 
 // Configure MySQL Database connection string
@@ -45,6 +47,7 @@ else
 {
     connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
         ?? "Server=mysql;Database=taskdb;User=taskuser;Password=taskpass123;";
+    Console.WriteLine("Using fallback connection string");
 }
 
 var serverVersion = new MySqlServerVersion(new Version(8, 0, 0));
