@@ -19,6 +19,37 @@ pipeline {
             }
         }
         
+        stage('Check Code Changes') {
+            steps {
+                script {
+                    // Get current and previous commit hashes
+                    def LAST_COMMIT = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
+                    def PREV_COMMIT = sh(script: "git rev-parse HEAD~1", returnStdout: true).trim()
+                    
+                    echo "📝 Last Commit: ${LAST_COMMIT}"
+                    echo "📝 Previous Commit: ${PREV_COMMIT}"
+                    
+                    // Check if there are any actual code changes
+                    def CODE_CHANGES = sh(
+                        script: "git diff --name-only ${PREV_COMMIT} ${LAST_COMMIT} | grep -E 'backend/|nginx/' | wc -l",
+                        returnStdout: true
+                    ).trim().toInteger()
+                    
+                    if (CODE_CHANGES == 0) {
+                        echo "⚠️ No code changes detected in backend or nginx directories!"
+                        echo "⏭️ Skipping build and deployment..."
+                        currentBuild.result = 'ABORTED'
+                        error("No code changes detected - skipping build")
+                    } else {
+                        echo "✅ ${CODE_CHANGES} files changed. Proceeding with build..."
+                        
+                        // Show which files changed
+                        sh "git diff --name-only ${PREV_COMMIT} ${LAST_COMMIT} | grep -E 'backend/|nginx/' || true"
+                    }
+                }
+            }
+        }
+        
         stage('Login to ECR') {
             steps {
                 sh """
@@ -155,7 +186,7 @@ pipeline {
                         echo "✅ Current running containers:"
                         docker ps
                         
-                        # Optional: Remove old build tags from app-server to save space (keep last 5)
+                        # Remove old build images from app-server (keep last 5)
                         echo "🗑️ Removing old build images (keeping last 5)..."
                         docker images --format "table {{.Repository}}:{{.Tag}}" | grep "${ECR_REGISTRY}" | grep -v "latest" | head -n -5 | xargs -r docker rmi 2>/dev/null || true
                     '
@@ -174,6 +205,9 @@ pipeline {
         failure {
             echo "❌ Deployment failed! Build: ${BUILD_NUMBER}"
             echo "📋 Check Jenkins logs for details"
+        }
+        aborted {
+            echo "⚠️ Build ${BUILD_NUMBER} was aborted (no code changes detected)"
         }
         always {
             echo "🏁 Build ${BUILD_NUMBER} completed at ${new Date()}"
