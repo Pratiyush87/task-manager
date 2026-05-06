@@ -5,8 +5,6 @@ pipeline {
         ECR_REGISTRY = '988698481528.dkr.ecr.ap-south-1.amazonaws.com'
         AWS_REGION = 'ap-south-1'
         IMAGE_TAG = "${BUILD_NUMBER}"
-        S3_BUCKET = 'task-manager-frontend-988698481528'
-        CLOUDFRONT_ID = 'd2vgxnoq21fpry'
         
         RDS_HOST = credentials('rds-host')
         RDS_USER = credentials('rds-username')
@@ -30,33 +28,7 @@ pipeline {
             }
         }
         
-        stage('Build Frontend') {
-            steps {
-                script {
-                    sh """
-                    cd frontend
-                    npm install
-                    npm run build
-                    echo "Frontend build completed"
-                    """
-                }
-            }
-        }
-        
-        stage('Upload Frontend to S3') {
-            steps {
-                script {
-                    sh """
-                    aws s3 sync frontend/build/ s3://${S3_BUCKET}/ --delete --region ${AWS_REGION}
-                    echo "Frontend uploaded to S3"
-                    aws cloudfront create-invalidation --distribution-id ${CLOUDFRONT_ID} --paths "/*" --region ${AWS_REGION}
-                    echo "CloudFront cache invalidated"
-                    """
-                }
-            }
-        }
-        
-        stage('Build and Push Backend Images') {
+        stage('Build and Push Images') {
             parallel {
                 
                 stage('Node.js') {
@@ -64,11 +36,16 @@ pipeline {
                         script {
                             sh """
                             cd backend/nodejs
+                            
+                            # Build with both tags
                             docker build -t ${ECR_REGISTRY}/task-manager-nodejs:${IMAGE_TAG} .
                             docker tag ${ECR_REGISTRY}/task-manager-nodejs:${IMAGE_TAG} ${ECR_REGISTRY}/task-manager-nodejs:latest
+                            
+                            # Push both tags
                             docker push ${ECR_REGISTRY}/task-manager-nodejs:${IMAGE_TAG}
                             docker push ${ECR_REGISTRY}/task-manager-nodejs:latest
-                            echo "Node.js pushed"
+                            
+                            echo "✅ Node.js: Pushed tags ${IMAGE_TAG} and latest"
                             """
                         }
                     }
@@ -79,11 +56,14 @@ pipeline {
                         script {
                             sh """
                             cd backend/fastapi
+                            
                             docker build -t ${ECR_REGISTRY}/task-manager-fastapi:${IMAGE_TAG} .
                             docker tag ${ECR_REGISTRY}/task-manager-fastapi:${IMAGE_TAG} ${ECR_REGISTRY}/task-manager-fastapi:latest
+                            
                             docker push ${ECR_REGISTRY}/task-manager-fastapi:${IMAGE_TAG}
                             docker push ${ECR_REGISTRY}/task-manager-fastapi:latest
-                            echo "FastAPI pushed"
+                            
+                            echo "✅ FastAPI: Pushed tags ${IMAGE_TAG} and latest"
                             """
                         }
                     }
@@ -94,11 +74,14 @@ pipeline {
                         script {
                             sh """
                             cd backend/springboot
+                            
                             docker build -t ${ECR_REGISTRY}/task-manager-springboot:${IMAGE_TAG} .
                             docker tag ${ECR_REGISTRY}/task-manager-springboot:${IMAGE_TAG} ${ECR_REGISTRY}/task-manager-springboot:latest
+                            
                             docker push ${ECR_REGISTRY}/task-manager-springboot:${IMAGE_TAG}
                             docker push ${ECR_REGISTRY}/task-manager-springboot:latest
-                            echo "Spring Boot pushed"
+                            
+                            echo "✅ Spring Boot: Pushed tags ${IMAGE_TAG} and latest"
                             """
                         }
                     }
@@ -109,11 +92,14 @@ pipeline {
                         script {
                             sh """
                             cd backend/dotnet
+                            
                             docker build -t ${ECR_REGISTRY}/task-manager-dotnet:${IMAGE_TAG} .
                             docker tag ${ECR_REGISTRY}/task-manager-dotnet:${IMAGE_TAG} ${ECR_REGISTRY}/task-manager-dotnet:latest
+                            
                             docker push ${ECR_REGISTRY}/task-manager-dotnet:${IMAGE_TAG}
                             docker push ${ECR_REGISTRY}/task-manager-dotnet:latest
-                            echo ".NET pushed"
+                            
+                            echo "✅ .NET: Pushed tags ${IMAGE_TAG} and latest"
                             """
                         }
                     }
@@ -124,11 +110,14 @@ pipeline {
                         script {
                             sh """
                             cd nginx
+                            
                             docker build -t ${ECR_REGISTRY}/task-manager-nginx:${IMAGE_TAG} .
                             docker tag ${ECR_REGISTRY}/task-manager-nginx:${IMAGE_TAG} ${ECR_REGISTRY}/task-manager-nginx:latest
+                            
                             docker push ${ECR_REGISTRY}/task-manager-nginx:${IMAGE_TAG}
                             docker push ${ECR_REGISTRY}/task-manager-nginx:latest
-                            echo "Nginx pushed"
+                            
+                            echo "✅ Nginx: Pushed tags ${IMAGE_TAG} and latest"
                             """
                         }
                     }
@@ -141,14 +130,33 @@ pipeline {
                 script {
                     sh """
                     ssh -o StrictHostKeyChecking=no ubuntu@10.0.2.242 '
+                        
                         cd /home/ubuntu/task-manager
+                        
+                        echo "📦 Pulling latest code from GitHub..."
                         git pull origin main
-                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                        
+                        echo "🔐 Logging into ECR..."
+                        aws ecr get-login-password --region ${AWS_REGION} | \
+                        docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                        
+                        echo "🛑 Stopping old containers..."
                         docker-compose -f docker-compose.prod.yml down
+                        
+                        echo "📥 Pulling latest images (tag: latest)..."
                         docker-compose -f docker-compose.prod.yml pull
+                        
+                        echo "🚀 Starting new containers..."
                         docker-compose -f docker-compose.prod.yml up -d
+                        
+                        echo "🧹 Cleaning up old unused images..."
                         docker image prune -f
+                        
+                        echo "✅ Current running containers:"
                         docker ps
+                        
+                        # Optional: Remove old build tags from app-server to save space (keep last 5)
+                        echo "🗑️ Removing old build images (keeping last 5)..."
                         docker images --format "table {{.Repository}}:{{.Tag}}" | grep "${ECR_REGISTRY}" | grep -v "latest" | head -n -5 | xargs -r docker rmi 2>/dev/null || true
                     '
                     """
@@ -159,13 +167,16 @@ pipeline {
     
     post {
         success {
-            echo "Deployment successful! Build: ${BUILD_NUMBER}"
+            echo "🎉 Deployment successful! Build: ${BUILD_NUMBER}"
+            echo "✅ Images pushed with tags: ${BUILD_NUMBER} and latest"
+            echo "🔗 Application available at: http://task-manager-alb-1975964182.ap-south-1.elb.amazonaws.com"
         }
         failure {
-            echo "Deployment failed! Build: ${BUILD_NUMBER}"
+            echo "❌ Deployment failed! Build: ${BUILD_NUMBER}"
+            echo "📋 Check Jenkins logs for details"
         }
         always {
-            echo "Build ${BUILD_NUMBER} completed"
+            echo "🏁 Build ${BUILD_NUMBER} completed at ${new Date()}"
         }
     }
 }
