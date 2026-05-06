@@ -5,11 +5,8 @@ pipeline {
         ECR_REGISTRY = '988698481528.dkr.ecr.ap-south-1.amazonaws.com'
         AWS_REGION = 'ap-south-1'
         IMAGE_TAG = "${BUILD_NUMBER}"
-        
-        RDS_HOST = credentials('rds-host')
-        RDS_USER = credentials('rds-username')
-        RDS_PASSWORD = credentials('rds-password')
-        DB_NAME = 'taskdb'
+        S3_BUCKET = 'task-manager-frontend-988698481528'
+        CLOUDFRONT_ID = 'd2vgxnoq21fpry'  # Your CloudFront distribution ID
     }
     
     stages {
@@ -28,7 +25,46 @@ pipeline {
             }
         }
         
-        stage('Build and Push Images') {
+        stage('Build Frontend') {
+            steps {
+                script {
+                    sh """
+                    cd frontend
+                    
+                    # Install dependencies
+                    npm install
+                    
+                    # Build React app with production config
+                    npm run build
+                    
+                    echo "✅ Frontend build completed"
+                    """
+                }
+            }
+        }
+        
+        stage('Upload Frontend to S3') {
+            steps {
+                script {
+                    sh """
+                    # Sync build folder to S3 bucket
+                    aws s3 sync frontend/build/ s3://${S3_BUCKET}/ --delete --region ${AWS_REGION}
+                    
+                    echo "✅ Frontend uploaded to S3"
+                    
+                    # Invalidate CloudFront cache
+                    aws cloudfront create-invalidation \
+                        --distribution-id ${CLOUDFRONT_ID} \
+                        --paths "/*" \
+                        --region ${AWS_REGION}
+                    
+                    echo "✅ CloudFront cache invalidated"
+                    """
+                }
+            }
+        }
+        
+        stage('Build and Push Backend Images') {
             parallel {
                 
                 stage('Node.js') {
@@ -37,11 +73,9 @@ pipeline {
                             sh """
                             cd backend/nodejs
                             
-                            # Build with both tags
                             docker build -t ${ECR_REGISTRY}/task-manager-nodejs:${IMAGE_TAG} .
                             docker tag ${ECR_REGISTRY}/task-manager-nodejs:${IMAGE_TAG} ${ECR_REGISTRY}/task-manager-nodejs:latest
                             
-                            # Push both tags
                             docker push ${ECR_REGISTRY}/task-manager-nodejs:${IMAGE_TAG}
                             docker push ${ECR_REGISTRY}/task-manager-nodejs:latest
                             
@@ -155,7 +189,6 @@ pipeline {
                         echo "✅ Current running containers:"
                         docker ps
                         
-                        # Optional: Remove old build tags from app-server to save space (keep last 5)
                         echo "🗑️ Removing old build images (keeping last 5)..."
                         docker images --format "table {{.Repository}}:{{.Tag}}" | grep "${ECR_REGISTRY}" | grep -v "latest" | head -n -5 | xargs -r docker rmi 2>/dev/null || true
                     '
@@ -168,8 +201,9 @@ pipeline {
     post {
         success {
             echo "🎉 Deployment successful! Build: ${BUILD_NUMBER}"
-            echo "✅ Images pushed with tags: ${BUILD_NUMBER} and latest"
-            echo "🔗 Application available at: http://task-manager-alb-1975964182.ap-south-1.elb.amazonaws.com"
+            echo "✅ Backend images pushed with tags: ${BUILD_NUMBER} and latest"
+            echo "✅ Frontend deployed to S3 and CloudFront"
+            echo "🔗 Application available at: https://${CLOUDFRONT_ID}.cloudfront.net"
         }
         failure {
             echo "❌ Deployment failed! Build: ${BUILD_NUMBER}"
