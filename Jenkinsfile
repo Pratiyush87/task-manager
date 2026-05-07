@@ -5,6 +5,8 @@ pipeline {
         ECR_REGISTRY = '988698481528.dkr.ecr.ap-south-1.amazonaws.com'
         AWS_REGION = 'ap-south-1'
         IMAGE_TAG = "${BUILD_NUMBER}"
+        S3_BUCKET = 'task-manager-frontend-988698481528'
+        CLOUDFRONT_DIST_ID = 'E1LBS9BGI8NY9J'
         
         RDS_HOST = credentials('rds-host')
         RDS_USER = credentials('rds-username')
@@ -28,20 +30,17 @@ pipeline {
             }
         }
         
-        stage('Build and Push Images') {
+        stage('Build and Push Backend Images') {
             parallel {
-                
                 stage('Node.js') {
                     steps {
                         script {
                             sh """
                             cd backend/nodejs
                             
-                            # Build with both tags
                             docker build -t ${ECR_REGISTRY}/task-manager-nodejs:${IMAGE_TAG} .
                             docker tag ${ECR_REGISTRY}/task-manager-nodejs:${IMAGE_TAG} ${ECR_REGISTRY}/task-manager-nodejs:latest
                             
-                            # Push both tags
                             docker push ${ECR_REGISTRY}/task-manager-nodejs:${IMAGE_TAG}
                             docker push ${ECR_REGISTRY}/task-manager-nodejs:latest
                             
@@ -125,7 +124,48 @@ pipeline {
             }
         }
         
-        stage('Deploy to App Server') {
+        stage('Build Frontend') {
+            steps {
+                script {
+                    sh """
+                    echo "📦 Installing frontend dependencies..."
+                    cd frontend
+                    npm install
+                    
+                    echo "🔧 Building React app with production config..."
+                    
+                    # Create .env.production with API URL
+                    cat > .env.production << 'ENVFILE'
+REACT_APP_API_URL=https://dj4yn1hc7nqm4.cloudfront.net/api
+ENVFILE
+                    
+                    echo "🏗️ Running npm build..."
+                    npm run build
+                    
+                    echo "✅ Frontend build completed"
+                    """
+                }
+            }
+        }
+        
+        stage('Deploy Frontend to S3') {
+            steps {
+                script {
+                    sh """
+                    echo "📤 Syncing build files to S3 bucket: ${S3_BUCKET}"
+                    aws s3 sync frontend/build/ s3://${S3_BUCKET}/ --delete
+                    
+                    echo "🌐 Invalidating CloudFront cache..."
+                    aws cloudfront create-invalidation --distribution-id ${CLOUDFRONT_DIST_ID} --paths "/*"
+                    
+                    echo "✅ Frontend deployed successfully!"
+                    echo "🔗 Frontend URL: https://d2vgxnoq21fpry.cloudfront.net"
+                    """
+                }
+            }
+        }
+        
+        stage('Deploy Backend to App Server') {
             steps {
                 script {
                     sh """
@@ -155,7 +195,6 @@ pipeline {
                         echo "✅ Current running containers:"
                         docker ps
                         
-                        # Optional: Remove old build tags from app-server to save space (keep last 5)
                         echo "🗑️ Removing old build images (keeping last 5)..."
                         docker images --format "table {{.Repository}}:{{.Tag}}" | grep "${ECR_REGISTRY}" | grep -v "latest" | head -n -5 | xargs -r docker rmi 2>/dev/null || true
                     '
@@ -168,8 +207,10 @@ pipeline {
     post {
         success {
             echo "🎉 Deployment successful! Build: ${BUILD_NUMBER}"
-            echo "✅ Images pushed with tags: ${BUILD_NUMBER} and latest"
-            echo "🔗 Application available at: http://task-manager-alb-1975964182.ap-south-1.elb.amazonaws.com"
+            echo "✅ Backend images pushed with tags: ${BUILD_NUMBER} and latest"
+            echo "✅ Frontend deployed to S3 and CloudFront invalidated"
+            echo "🔗 Application available at: https://d2vgxnoq21fpry.cloudfront.net"
+            echo "🔗 Backend API at: https://dj4yn1hc7nqm4.cloudfront.net/api"
         }
         failure {
             echo "❌ Deployment failed! Build: ${BUILD_NUMBER}"
